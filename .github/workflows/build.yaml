@@ -148,7 +148,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.build.outputs.tag }}
-          name: Chromium Android Desktop ${{ steps.build.outputs.version }}
+          name: ${{ steps.build.outputs.version }}
           make_latest: true
           files: ${{ steps.build.outputs.apk }}
           body: |
