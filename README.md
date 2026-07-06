@@ -16,3 +16,14 @@ To install extensions:
 - Drag and drop the `.crx` file into the page
 
 On mobile, this works best using the "Split screen" feature with the Files app.
+
+### Extension Downloads
+
+The `.crx` file can be downloaded from:
+```
+https://clients2.google.com/service/update2/crx?response=redirect&os=android&arch=arm64&acceptformat=crx2,crx3&prodversion=[VERSION]&x=id%3D[EXTENSION]%26uc
+```
+`[VERSION]` is the version of Chromium, and `[EXTENSION]` is the ID of the extension.
+
+- [uBlock Origin Lite](https://clients2.google.com/service/update2/crx?response=redirect&os=android&arch=arm64&prodversion=152.0.7925.0&acceptformat=crx2,crx3&x=id%3Dddkjiahejlhfcafbddmgiahcphecmpfh%26uc)
+- [Pangram AI Detection](https://clients2.google.com/service/update2/crx?response=redirect&os=android&arch=arm64&prodversion=152.0.7925.0&acceptformat=crx2,crx3&x=id%3Deakpippijmmohmdlpgcjnipolcgciaga%26uc)
