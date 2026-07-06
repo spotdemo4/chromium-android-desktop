@@ -26,14 +26,14 @@ jobs:
 
     steps:
       - name: Check out workflow repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           clean: false
           fetch-depth: 1
 
       - name: Compare Chromium and latest release majors
         id: version_check
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const versionUrl = 'https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/VERSION?format=TEXT';
@@ -142,7 +142,7 @@ jobs:
 
       - name: Create GitHub release
         if: steps.version_check.outputs.should_build == 'true' || inputs.force == true
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.build.outputs.tag }}
           name: ${{ steps.build.outputs.version }}
