@@ -96,14 +96,14 @@ if [[ "$APPLY_CHROMIUM_PATCHES" != "0" && "$APPLY_CHROMIUM_PATCHES" != "1" ]]; t
   exit 2
 fi
 
+step "Ensuring local workspace exists: $WORKSPACE"
+mkdir -p "$WORKSPACE"
+
 step "Checking local build host"
 hostname
 nproc
 free -h | sed -n "1,2p"
 df -h "$WORKSPACE"
-
-step "Ensuring local workspace exists: $WORKSPACE"
-mkdir -p "$WORKSPACE"
 
 step "Ensuring Docker builder container exists"
 if docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
