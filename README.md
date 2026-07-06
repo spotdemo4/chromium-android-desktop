@@ -5,7 +5,7 @@ Production builds of Chromium for Android "Desktop" that support:
 
 This differs from the official [Chromium for Android Desktop builds](https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=AndroidDesktop_arm64%2F), which do not support proprietary codecs.
 
-Download the APK from the [releases page](https://github.com/spotdemo4/chromium-android/releases).
+Download the APK from the [releases page](https://github.com/spotdemo4/chromium-android-desktop/releases/latest).
 
 [Learn more](https://www.androidauthority.com/chrome-for-android-with-extensions-demo-3540132/)
 
