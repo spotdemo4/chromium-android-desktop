@@ -128,6 +128,9 @@ container_root /workspace '
   fi
 '
 
+step "Ensuring mounted workspace is writable in container"
+container_root /workspace 'chmod a+rwx /workspace'
+
 step "Cloning depot_tools if needed"
 container_ubuntu /workspace '
   if [ ! -d /workspace/depot_tools/.git ]; then
