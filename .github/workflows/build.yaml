@@ -134,7 +134,7 @@ jobs:
 
       - name: Upload APK artifact
         if: steps.version_check.outputs.should_build == 'true' || inputs.force == true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ChromePublic_arm64-${{ steps.build.outputs.version }}
           path: ${{ steps.build.outputs.apk }}
