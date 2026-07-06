@@ -17,6 +17,8 @@ Environment overrides:
   ENABLE_HEVC              1 to enable platform HEVC/H.265, 0 to disable (default: 1)
   SYNC_CHROMIUM            1 to run gclient sync on an existing checkout (default: 0)
   FORCE_INSTALL_BUILD_DEPS 1 to rerun install-build-deps.sh (default: 0)
+  APPLY_CHROMIUM_PATCHES   1 to apply ./patches/*.patch before building (default: 1)
+  PATCH_DIR                Patch directory (default: ./patches next to build.sh)
 
 Examples:
   ./build.sh
@@ -39,6 +41,8 @@ LOCAL_APK=${LOCAL_APK:-"$PWD/ChromePublic_arm64.apk"}
 ENABLE_HEVC=${ENABLE_HEVC:-1}
 SYNC_CHROMIUM=${SYNC_CHROMIUM:-0}
 FORCE_INSTALL_BUILD_DEPS=${FORCE_INSTALL_BUILD_DEPS:-0}
+APPLY_CHROMIUM_PATCHES=${APPLY_CHROMIUM_PATCHES:-1}
+PATCH_DIR=${PATCH_DIR:-"$SCRIPT_DIR/patches"}
 
 quote() {
   printf '%q' "$1"
@@ -67,11 +71,28 @@ container_ubuntu() {
     bash -lc "$cmd"
 }
 
+container_ubuntu_script() {
+  local workdir=$1
+  docker exec \
+    -u ubuntu \
+    -e HOME=/home/ubuntu \
+    -e GCLIENT_SUPPRESS_GIT_VERSION_WARNING=1 \
+    -e PATH=/workspace/depot_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    -w "$workdir" \
+    "$CONTAINER_NAME" \
+    bash -s
+}
+
 OUTPUT_APK="$WORKSPACE/chromium/src/$BUILD_DIR/apks/ChromePublic.apk"
 BUILD_LOG="/workspace/build-android-desktop-codecs-release.log"
 
 if [[ "$ENABLE_HEVC" != "0" && "$ENABLE_HEVC" != "1" ]]; then
   printf 'ENABLE_HEVC must be 0 or 1, got: %s\n' "$ENABLE_HEVC" >&2
+  exit 2
+fi
+
+if [[ "$APPLY_CHROMIUM_PATCHES" != "0" && "$APPLY_CHROMIUM_PATCHES" != "1" ]]; then
+  printf 'APPLY_CHROMIUM_PATCHES must be 0 or 1, got: %s\n' "$APPLY_CHROMIUM_PATCHES" >&2
   exit 2
 fi
 
@@ -123,6 +144,33 @@ elif [[ "$SYNC_CHROMIUM" == "1" ]]; then
   container_ubuntu /workspace/chromium 'gclient sync --nohooks --no-history'
 else
   printf 'Existing Chromium checkout found; set SYNC_CHROMIUM=1 to update it.\n'
+fi
+
+if [[ "$APPLY_CHROMIUM_PATCHES" == "1" ]]; then
+  if [[ -d "$PATCH_DIR" ]]; then
+    step "Applying Chromium patches from $PATCH_DIR"
+    container_root /workspace 'rm -rf /tmp/chromium-android-patches && mkdir -p /tmp/chromium-android-patches && chmod 755 /tmp/chromium-android-patches'
+    docker cp "$PATCH_DIR/." "$CONTAINER_NAME:/tmp/chromium-android-patches/"
+    container_ubuntu_script /workspace/chromium/src <<'EOF'
+      set -e
+      shopt -s nullglob
+      patches=(/tmp/chromium-android-patches/*.patch)
+      if [ ${#patches[@]} -eq 0 ]; then
+        printf "No patch files found.\n"
+      fi
+      for patch in "${patches[@]}"; do
+        if git apply --check --reverse "$patch" >/dev/null 2>&1; then
+          printf "Patch already applied: %s\n" "$(basename "$patch")"
+        else
+          git apply --check "$patch"
+          git apply "$patch"
+          printf "Applied patch: %s\n" "$(basename "$patch")"
+        fi
+      done
+EOF
+  else
+    printf 'Patch directory not found; skipping Chromium patches: %s\n' "$PATCH_DIR"
+  fi
 fi
 
 step "Installing Chromium build dependencies if needed"

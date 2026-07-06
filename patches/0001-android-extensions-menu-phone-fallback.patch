@@ -1,0 +1,99 @@
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
+index e670c43e658c8e140256540510a7ff1c6661b3e4..1d77d282f118b9aa8d529538a5b130d2c861607b 100644
+--- a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
+@@ -4414,8 +4414,22 @@ public class ChromeTabbedActivity extends ChromeActivity implements PreAttachInt
+         } else if (id == R.id.extensions_menu_menu_id) {
+             ExtensionsToolbarCoordinator coordinator =
+                     getToolbarManager().getExtensionsToolbarCoordinator();
+-            coordinator.showExtensionsMenu();
+-            RecordUserAction.record("MobileMenuExtensionsMenu");
++            if (coordinator != null) {
++                coordinator.showExtensionsMenu();
++                RecordUserAction.record("MobileMenuExtensionsMenu");
++            } else {
++                LoadUrlParams params =
++                        new LoadUrlParams(
++                                UrlConstants.CHROME_EXTENSIONS_URL,
++                                PageTransition.AUTO_TOPLEVEL);
++                if (currentTab == null) {
++                    getTabCreator(getCurrentTabModel().isIncognito())
++                            .createNewTab(params, TabLaunchType.FROM_CHROME_UI, null);
++                } else {
++                    currentTab.loadUrl(params);
++                }
++                RecordUserAction.record("MobileMenuManageExtensions");
++            }
+         } else if (id == R.id.manage_extensions_menu_id) {
+             LoadUrlParams params =
+                     new LoadUrlParams(
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/tabbed_mode/TabbedAppMenuPropertiesDelegate.java b/chrome/android/java/src/org/chromium/chrome/browser/tabbed_mode/TabbedAppMenuPropertiesDelegate.java
+index e248048c4b702e49dab5b54dc60ba33758b101d7..f6bd8f7d58c7a42fbbf2911fe3896e476a843e0d 100644
+--- a/chrome/android/java/src/org/chromium/chrome/browser/tabbed_mode/TabbedAppMenuPropertiesDelegate.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/tabbed_mode/TabbedAppMenuPropertiesDelegate.java
+@@ -426,8 +426,10 @@ public class TabbedAppMenuPropertiesDelegate extends AppMenuPropertiesDelegateIm
+         }
+ 
+         // Extensions
+-        if (shouldShowExtensionsItem()) {
++        if (shouldShowExtensionsMenuItem()) {
+             modelList.add(buildExtensionsMenuItem(shouldShowIconBeforeItem));
++        } else if (shouldShowExtensionsItem()) {
++            modelList.add(buildManageExtensionsItem(shouldShowIconBeforeItem));
+         }
+ 
+         // Divider
+@@ -1882,12 +1884,19 @@ public class TabbedAppMenuPropertiesDelegate extends AppMenuPropertiesDelegateIm
+         return ExtensionUi.isEnabled(getProfileFromTabModel());
+     }
+ 
++    private boolean shouldShowExtensionsMenuItem() {
++        // The popup menu depends on desktop Android task UI that is absent on phone form factors.
++        return shouldShowExtensionsItem() && DeviceInfo.isDesktop();
++    }
++
+     private ListItem buildExtensionsParentItem() {
+         assert shouldShowExtensionsItem();
+ 
+         List<ListItem> submenuItems = new ArrayList<>();
+-        submenuItems.add(buildExtensionsMenuItem(/* showIcon= */ false));
+-        submenuItems.add(buildManageExtensionsItem());
++        if (shouldShowExtensionsMenuItem()) {
++            submenuItems.add(buildExtensionsMenuItem(/* showIcon= */ false));
++        }
++        submenuItems.add(buildManageExtensionsItem(/* showIcon= */ false));
+         submenuItems.add(buildChromeWebstoreItem());
+ 
+         return new ListItem(
+@@ -1902,7 +1910,7 @@ public class TabbedAppMenuPropertiesDelegate extends AppMenuPropertiesDelegateIm
+     }
+ 
+     private ListItem buildExtensionsMenuItem(boolean showIcon) {
+-        assert shouldShowExtensionsItem();
++        assert shouldShowExtensionsMenuItem();
+ 
+         return createStandardListItem(
+                 buildModelForStandardMenuItem(
+@@ -1912,19 +1920,15 @@ public class TabbedAppMenuPropertiesDelegate extends AppMenuPropertiesDelegateIm
+                 showIcon);
+     }
+ 
+-    private ListItem buildManageExtensionsItem() {
++    private ListItem buildManageExtensionsItem(boolean showIcon) {
+         assert shouldShowExtensionsItem();
+ 
+-        // The id {@code R.id.extensions_menu_id} is used for both when this flag is enabled and
+-        // disabled but in different context.
+-        assert ChromeFeatureList.isEnabled(ChromeFeatureList.SUBMENUS_IN_APP_MENU);
+-
+         return createStandardListItem(
+                 buildModelForStandardMenuItem(
+                         R.id.manage_extensions_menu_id,
+                         R.string.menu_manage_extensions,
+-                        Resources.ID_NULL),
+-                /* showIcon= */ false);
++                        showIcon ? R.drawable.ic_extension_24dp : Resources.ID_NULL),
++                showIcon);
+     }
+ 
+     private ListItem buildChromeWebstoreItem() {
