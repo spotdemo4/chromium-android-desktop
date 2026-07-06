@@ -97,7 +97,7 @@ jobs:
 
           chromium_workspace=${CHROMIUM_WORKSPACE:-$HOME/Dev/chromium-android}
           chromium_version='${{ steps.version_check.outputs.chromium_version }}'
-          local_apk="$GITHUB_WORKSPACE/artifacts/ChromePublic-android-desktop-codecs-$chromium_version.apk"
+          local_apk="$GITHUB_WORKSPACE/artifacts/ChromePublic_arm64.apk"
 
           enable_hevc=1
           if [[ '${{ inputs.enable_hevc }}' == 'false' ]]; then
@@ -123,10 +123,7 @@ jobs:
             ' "$version_file"
           )
 
-          actual_apk="$GITHUB_WORKSPACE/artifacts/ChromePublic-android-desktop-codecs-$actual_version.apk"
-          if [[ "$actual_apk" != "$local_apk" ]]; then
-            mv "$local_apk" "$actual_apk"
-          fi
+          actual_apk="$local_apk"
 
           sha256=$(sha256sum "$actual_apk" | awk '{ print $1 }')
 
@@ -139,7 +136,7 @@ jobs:
         if: steps.version_check.outputs.should_build == 'true' || inputs.force == true
         uses: actions/upload-artifact@v4
         with:
-          name: Chromium-Android-Desktop-${{ steps.build.outputs.version }}
+          name: ChromePublic_arm64-${{ steps.build.outputs.version }}
           path: ${{ steps.build.outputs.apk }}
           if-no-files-found: error
 

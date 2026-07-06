@@ -13,7 +13,7 @@ Environment overrides:
   CONTAINER_NAME           Docker container name (default: chromium-android-builder)
   UBUNTU_IMAGE             Docker image (default: ubuntu:24.04)
   BUILD_DIR                Chromium output dir (default: out/android-desktop-codecs-release)
-  LOCAL_APK                Local APK path (default: ./ChromePublic-android-desktop-codecs-release.apk)
+  LOCAL_APK                Local APK path (default: ./ChromePublic_arm64.apk)
   ENABLE_HEVC              1 to enable platform HEVC/H.265, 0 to disable (default: 1)
   SYNC_CHROMIUM            1 to run gclient sync on an existing checkout (default: 0)
   FORCE_INSTALL_BUILD_DEPS 1 to rerun install-build-deps.sh (default: 0)
@@ -35,7 +35,7 @@ WORKSPACE=${WORKSPACE:-$SCRIPT_DIR}
 CONTAINER_NAME=${CONTAINER_NAME:-chromium-android-builder}
 UBUNTU_IMAGE=${UBUNTU_IMAGE:-ubuntu:24.04}
 BUILD_DIR=${BUILD_DIR:-out/android-desktop-codecs-release}
-LOCAL_APK=${LOCAL_APK:-"$PWD/ChromePublic-android-desktop-codecs-release.apk"}
+LOCAL_APK=${LOCAL_APK:-"$PWD/ChromePublic_arm64.apk"}
 ENABLE_HEVC=${ENABLE_HEVC:-1}
 SYNC_CHROMIUM=${SYNC_CHROMIUM:-0}
 FORCE_INSTALL_BUILD_DEPS=${FORCE_INSTALL_BUILD_DEPS:-0}
