@@ -1,11 +1,12 @@
 Production builds of Chromium for Android "Desktop" that support:
+- Mobile
 - Extensions
 - Proprietary codecs (H.264, AAC, HEVC)
 - Installing Progressive Web Apps (PWAs)
 
-This differs from the official [Chromium for Android Desktop builds](https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=AndroidDesktop_arm64%2F), which do not support proprietary codecs
+This differs from the [official builds](https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=AndroidDesktop_arm64%2F), which do not support proprietary codecs
 
-Download the APK from the [releases page](https://github.com/spotdemo4/chromium-android-desktop/releases/latest)
+Download the APK from [Releases](https://github.com/spotdemo4/chromium-android-desktop/releases/latest)
 
 [Learn more](https://www.androidauthority.com/chrome-for-android-with-extensions-demo-3540132/)
 
@@ -17,7 +18,7 @@ To install extensions:
 - Enable "Developer mode" (top right corner)
 - Drag and drop the `.crx` file into the page
 
-On mobile, this works best using the "Split screen" feature with the Files app
+On mobile, this works best using the "split screen" feature with the Files app
 
 ### Extension Downloads
 
