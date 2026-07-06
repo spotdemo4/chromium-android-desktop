@@ -1,0 +1,69 @@
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
+index e670c43e658c8e140256540510a7ff1c6661b3e4..25863cb6af35dbd765c85c8624ff981486873de1 100644
+--- a/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/ChromeTabbedActivity.java
+@@ -4412,8 +4412,10 @@ public class ChromeTabbedActivity extends ChromeActivity implements PreAttachInt
+         } else if (id == R.id.extensions_menu_menu_id) {
+             ExtensionsToolbarCoordinator coordinator =
+                     getToolbarManager().getExtensionsToolbarCoordinator();
+-            coordinator.showExtensionsMenu();
+-            RecordUserAction.record("MobileMenuExtensionsMenu");
++            if (coordinator != null) {
++                coordinator.showExtensionsMenu();
++                RecordUserAction.record("MobileMenuExtensionsMenu");
++            }
+         } else if (id == R.id.manage_extensions_menu_id) {
+             LoadUrlParams params =
+                     new LoadUrlParams(
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/toolbar/ToolbarManager.java b/chrome/android/java/src/org/chromium/chrome/browser/toolbar/ToolbarManager.java
+index 21f522515c6c283755065b5ec1f3497fe38711e8..32e2cb1153a40b89f59ec5ac5f3e40c9552336c3 100644
+--- a/chrome/android/java/src/org/chromium/chrome/browser/toolbar/ToolbarManager.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/toolbar/ToolbarManager.java
+@@ -2643,7 +2643,7 @@ public class ToolbarManager implements UrlFocusChangeListener, ThemeColorObserve
+                                                         mActivityTabProvider.asObservable(),
+                                                         mTabCreatorManager.getTabCreator(false),
+                                                         getBrowsingModeThemeColorProvider(),
+-                                                        (ToolbarTablet) mToolbarLayout,
++                                                        mToolbarLayout,
+                                                         contextMenuPopulatorFactory,
+                                                         selectionDropdownMenuDelegate,
+                                                         mTabModelSelector,
+diff --git a/chrome/browser/ui/android/toolbar/java/res/layout/toolbar_phone.xml b/chrome/browser/ui/android/toolbar/java/res/layout/toolbar_phone.xml
+index 9e1f21d5a0c8ec9cdf75ca8a24c30adadd16af0c..735e7adf3dc61b81544cc6bd30391c18fa91b4ca 100644
+--- a/chrome/browser/ui/android/toolbar/java/res/layout/toolbar_phone.xml
++++ b/chrome/browser/ui/android/toolbar/java/res/layout/toolbar_phone.xml
+@@ -76,6 +76,13 @@ found in the LICENSE file.
+             android:layout_height="match_parent"
+             android:visibility="gone"/>
+ 
++        <ViewStub
++            android:id="@+id/extensions_toolbar_container_stub"
++            android:inflatedId="@+id/extensions_toolbar_container"
++            android:layout_width="wrap_content"
++            android:layout_height="?attr/toolbarButtonHeight"
++            android:layout_gravity="top" />
++
+         <org.chromium.chrome.browser.toolbar.top.ToggleTabStackButton
+             android:id="@+id/tab_switcher_button"
+             style="@style/ToolbarHoverableButton"
+diff --git a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsToolbarCoordinatorImpl.java b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsToolbarCoordinatorImpl.java
+index 3f44f4227aaed5d45d38a1cfeab3fbb0c07f6b57..eb7dde9e063ee175f4d582ccce8db78366ae57e6 100644
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsToolbarCoordinatorImpl.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsToolbarCoordinatorImpl.java
+@@ -179,6 +179,16 @@ public class ExtensionsToolbarCoordinatorImpl
+                                 mContainer.getResources().getConfiguration().screenWidthDp
+                                         < COMPACT_WINDOW_THRESHOLD_DP);
+         mPrefChangeRegistrar = PrefServiceUtil.createFor(profile);
++
++        if (rootView.findViewById(R.id.toolbar_tablet_layout) == null) {
++            // Phone toolbars use this coordinator only as a transient app-menu anchor. Keep
++            // tablet toolbar affordances hidden unless the app menu asks to show the extensions
++            // menu.
++            mContainer.findViewById(R.id.extension_action_list).setVisibility(View.GONE);
++            mContainer.findViewById(R.id.extensions_request_access_button).setVisibility(View.GONE);
++            updateMenuIconVisibility();
++        }
++
+         mPrefChangeRegistrar.addObserver(
+                 Pref.PIN_EXTENSIONS_MENU_BUTTON, this::updateMenuButtonPinState);
+         context.registerComponentCallbacks(this);

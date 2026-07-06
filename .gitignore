@@ -1,1 +1,3 @@
 *.apk
+/chromium/
+/depot_tools/
