@@ -1,4 +1,4 @@
-name: Build Chromium Android Desktop Codecs
+name: build
 
 on:
   workflow_dispatch:
