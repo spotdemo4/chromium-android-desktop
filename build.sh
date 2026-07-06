@@ -131,7 +131,13 @@ container_root /workspace '
 step "Cloning depot_tools if needed"
 container_ubuntu /workspace '
   if [ ! -d /workspace/depot_tools/.git ]; then
-    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git /workspace/depot_tools
+    rm -rf /workspace/depot_tools.tmp
+    if ! git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git /workspace/depot_tools.tmp; then
+      rm -rf /workspace/depot_tools.tmp
+      git clone https://github.com/chromium/depot_tools.git /workspace/depot_tools.tmp
+    fi
+    rm -rf /workspace/depot_tools
+    mv /workspace/depot_tools.tmp /workspace/depot_tools
   fi
 '
 

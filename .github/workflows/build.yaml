@@ -36,13 +36,39 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const versionUrl = 'https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/VERSION?format=TEXT';
-            const versionResponse = await fetch(versionUrl);
-            if (!versionResponse.ok) {
-              throw new Error(`Failed to fetch Chromium version: ${versionResponse.status} ${versionResponse.statusText}`);
+            const versionSources = [
+              {
+                name: 'chromium.googlesource.com',
+                url: 'https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/VERSION?format=TEXT',
+                decode: (text) => Buffer.from(text, 'base64').toString('utf8'),
+              },
+              {
+                name: 'github.com/chromium/chromium',
+                url: 'https://raw.githubusercontent.com/chromium/chromium/main/chrome/VERSION',
+                decode: (text) => text,
+              },
+            ];
+
+            let versionText = '';
+            const versionErrors = [];
+            for (const source of versionSources) {
+              try {
+                core.info(`Fetching Chromium version from ${source.name}`);
+                const versionResponse = await fetch(source.url);
+                if (!versionResponse.ok) {
+                  throw new Error(`${versionResponse.status} ${versionResponse.statusText}`);
+                }
+                versionText = source.decode(await versionResponse.text());
+                break;
+              } catch (error) {
+                versionErrors.push(`${source.name}: ${error.message}`);
+                core.warning(`Failed to fetch Chromium version from ${source.name}: ${error.message}`);
+              }
             }
 
-            const versionText = Buffer.from(await versionResponse.text(), 'base64').toString('utf8');
+            if (!versionText) {
+              throw new Error(`Failed to fetch Chromium version from all sources: ${versionErrors.join('; ')}`);
+            }
             const fields = Object.fromEntries(
               versionText
                 .trim()
