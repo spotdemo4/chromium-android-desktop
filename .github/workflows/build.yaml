@@ -1,0 +1,160 @@
+name: Build Chromium Android Desktop Codecs
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build even when the latest release has the same Chromium major version
+        required: false
+        default: false
+        type: boolean
+      enable_hevc:
+        description: Enable platform HEVC/H.265 support
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: "17 8 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: builder
+
+    steps:
+      - name: Check out workflow repository
+        uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
+
+      - name: Compare Chromium and latest release majors
+        id: version_check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const versionUrl = 'https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/VERSION?format=TEXT';
+            const versionResponse = await fetch(versionUrl);
+            if (!versionResponse.ok) {
+              throw new Error(`Failed to fetch Chromium version: ${versionResponse.status} ${versionResponse.statusText}`);
+            }
+
+            const versionText = Buffer.from(await versionResponse.text(), 'base64').toString('utf8');
+            const fields = Object.fromEntries(
+              versionText
+                .trim()
+                .split('\n')
+                .map((line) => line.split('='))
+            );
+            const chromiumVersion = `${fields.MAJOR}.${fields.MINOR}.${fields.BUILD}.${fields.PATCH}`;
+            const chromiumMajor = fields.MAJOR;
+
+            let latestReleaseTag = '';
+            let latestReleaseVersion = '';
+            let latestReleaseMajor = '';
+            try {
+              const release = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              latestReleaseTag = release.data.tag_name || '';
+              latestReleaseVersion = latestReleaseTag.replace(/^v/, '');
+              const match = latestReleaseVersion.match(/^(\d+)\./);
+              latestReleaseMajor = match ? match[1] : '';
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            const shouldBuild = !latestReleaseMajor || chromiumMajor !== latestReleaseMajor;
+
+            core.info(`Chromium main version: ${chromiumVersion}`);
+            core.info(`Latest release tag: ${latestReleaseTag || '(none)'}`);
+            core.info(`Build required: ${shouldBuild}`);
+
+            core.setOutput('chromium_version', chromiumVersion);
+            core.setOutput('chromium_major', chromiumMajor);
+            core.setOutput('latest_release_tag', latestReleaseTag);
+            core.setOutput('latest_release_version', latestReleaseVersion);
+            core.setOutput('latest_release_major', latestReleaseMajor);
+            core.setOutput('should_build', String(shouldBuild));
+
+      - name: Skip unchanged Chromium major
+        if: steps.version_check.outputs.should_build != 'true' && inputs.force != true
+        run: |
+          printf 'Latest Chromium major is %s; latest release is %s. Skipping build.\n' \
+            '${{ steps.version_check.outputs.chromium_major }}' \
+            '${{ steps.version_check.outputs.latest_release_tag }}'
+
+      - name: Build Chromium Android Desktop APK
+        if: steps.version_check.outputs.should_build == 'true' || inputs.force == true
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          chromium_workspace=${CHROMIUM_WORKSPACE:-$HOME/Dev/chromium-android}
+          chromium_version='${{ steps.version_check.outputs.chromium_version }}'
+          local_apk="$GITHUB_WORKSPACE/artifacts/ChromePublic-android-desktop-codecs-$chromium_version.apk"
+
+          enable_hevc=1
+          if [[ '${{ inputs.enable_hevc }}' == 'false' ]]; then
+            enable_hevc=0
+          fi
+
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+
+          WORKSPACE="$chromium_workspace" \
+          LOCAL_APK="$local_apk" \
+          ENABLE_HEVC="$enable_hevc" \
+          SYNC_CHROMIUM=1 \
+          bash "$GITHUB_WORKSPACE/build.sh"
+
+          version_file="$chromium_workspace/chromium/src/chrome/VERSION"
+          actual_version=$(
+            awk -F= '
+              $1 == "MAJOR" { major=$2 }
+              $1 == "MINOR" { minor=$2 }
+              $1 == "BUILD" { build=$2 }
+              $1 == "PATCH" { patch=$2 }
+              END { printf "%s.%s.%s.%s", major, minor, build, patch }
+            ' "$version_file"
+          )
+
+          actual_apk="$GITHUB_WORKSPACE/artifacts/ChromePublic-android-desktop-codecs-$actual_version.apk"
+          if [[ "$actual_apk" != "$local_apk" ]]; then
+            mv "$local_apk" "$actual_apk"
+          fi
+
+          sha256=$(sha256sum "$actual_apk" | awk '{ print $1 }')
+
+          printf 'version=%s\n' "$actual_version" >> "$GITHUB_OUTPUT"
+          printf 'tag=v%s\n' "$actual_version" >> "$GITHUB_OUTPUT"
+          printf 'apk=%s\n' "$actual_apk" >> "$GITHUB_OUTPUT"
+          printf 'sha256=%s\n' "$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        if: steps.version_check.outputs.should_build == 'true' || inputs.force == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chromium-Android-Desktop-${{ steps.build.outputs.version }}
+          path: ${{ steps.build.outputs.apk }}
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        if: steps.version_check.outputs.should_build == 'true' || inputs.force == true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.build.outputs.tag }}
+          name: Chromium Android Desktop ${{ steps.build.outputs.version }}
+          make_latest: true
+          files: ${{ steps.build.outputs.apk }}
+          body: |
+            Chromium Android Desktop build with extension support and proprietary codecs.
+
+            Version: `${{ steps.build.outputs.version }}`
+            SHA-256: `${{ steps.build.outputs.sha256 }}`
+
+            Build flags include `is_desktop_android=true`, `proprietary_codecs=true`, `ffmpeg_branding="Chrome"`, and platform HEVC enabled when requested.
