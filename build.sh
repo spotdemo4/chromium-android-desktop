@@ -83,7 +83,20 @@ container_ubuntu_script() {
     bash -s
 }
 
-OUTPUT_APK="$WORKSPACE/chromium/src/$BUILD_DIR/apks/ChromePublic.apk"
+create_container() {
+  docker run -d \
+    --name "$CONTAINER_NAME" \
+    -v "$WORKSPACE:/workspace" \
+    -w /workspace \
+    "$UBUNTU_IMAGE" sleep infinity >/dev/null
+}
+
+recreate_container() {
+  printf '%s; recreating Docker builder container.\n' "$1"
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  create_container
+}
+
 BUILD_LOG="/workspace/build-android-desktop-codecs-release.log"
 
 if [[ "$ENABLE_HEVC" != "0" && "$ENABLE_HEVC" != "1" ]]; then
@@ -98,6 +111,8 @@ fi
 
 step "Ensuring local workspace exists: $WORKSPACE"
 mkdir -p "$WORKSPACE"
+WORKSPACE=$(cd -- "$WORKSPACE" && pwd -P)
+OUTPUT_APK="$WORKSPACE/chromium/src/$BUILD_DIR/apks/ChromePublic.apk"
 
 step "Checking local build host"
 hostname
@@ -107,15 +122,23 @@ df -h "$WORKSPACE"
 
 step "Ensuring Docker builder container exists"
 if docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
-  if ! docker ps --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
-    docker start "$CONTAINER_NAME" >/dev/null
+  existing_workspace=$(
+    docker inspect \
+      --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}' \
+      "$CONTAINER_NAME"
+  )
+  if [[ "$existing_workspace" != "$WORKSPACE" ]]; then
+    recreate_container "Existing container has /workspace mounted from ${existing_workspace:-nothing}, expected $WORKSPACE"
+  else
+    if ! docker ps --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
+      docker start "$CONTAINER_NAME" >/dev/null
+    fi
+    if ! docker exec -w /workspace "$CONTAINER_NAME" true >/dev/null 2>&1; then
+      recreate_container "Existing container cannot exec from /workspace"
+    fi
   fi
 else
-  docker run -d \
-    --name "$CONTAINER_NAME" \
-    -v "$WORKSPACE:/workspace" \
-    -w /workspace \
-    "$UBUNTU_IMAGE" sleep infinity >/dev/null
+  create_container
 fi
 
 step "Installing base packages in container if needed"
