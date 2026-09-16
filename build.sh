@@ -167,6 +167,13 @@ container_ubuntu /workspace '
   fi
 '
 
+step "Bootstrapping depot_tools if needed"
+container_ubuntu /workspace '
+  if [ ! -f /workspace/depot_tools/python3_bin_reldir.txt ]; then
+    /workspace/depot_tools/ensure_bootstrap
+  fi
+'
+
 step "Fetching Chromium Android source if needed"
 container_ubuntu /workspace 'mkdir -p /workspace/chromium'
 if ! container_ubuntu /workspace 'test -d /workspace/chromium/src/.git'; then
