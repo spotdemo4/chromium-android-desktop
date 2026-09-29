@@ -14,13 +14,13 @@ jobs:
     steps:
       - id: checkout
         name: Checkout
-        uses: spotdemo4/better-checkout@caa4005d39c5ed24e309c1272e774d0319bbed7d # v0.14.0
+        uses: spotdemo4/better-checkout@c39844cb3980d957aa826bae37ee15204242154b # v0.15.0
         with:
           app-id: ${{ vars.CLIENT_ID }}
           private-key: ${{ secrets.PRIVATE_KEY }}
 
       - name: Renovate
-        uses: renovatebot/github-action@dcfba84a42d1b5d5e49bf131b1bf53511851a123 # v46.3.1
+        uses: renovatebot/github-action@6d26fcf0275dc65624cbc3d51fe78bc773f98321 # v46.3.6
         with:
           configurationFile: .github/renovate.json
           token: ${{ steps.checkout.outputs.token || github.token }}
