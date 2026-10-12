@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: Build even when the latest release has the same Chromium major version
+        description: Build even when the latest release already matches the latest stable Android version
         required: false
         default: false
         type: boolean
@@ -31,56 +31,64 @@ jobs:
           clean: false
           fetch-depth: 1
 
-      - name: Compare Chromium and latest release majors
+      - name: Compare latest stable Android Chromium and latest release
         id: version_check
         uses: actions/github-script@v9
         with:
           script: |
+            const parseVersion = (version) => version.split('.').map(Number);
+            const compareVersions = (a, b) => {
+              const pa = parseVersion(a);
+              const pb = parseVersion(b);
+              for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+                const diff = (pa[i] || 0) - (pb[i] || 0);
+                if (diff !== 0) return diff;
+              }
+              return 0;
+            };
+
             const versionSources = [
               {
-                name: 'chromium.googlesource.com',
-                url: 'https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/VERSION?format=TEXT',
-                decode: (text) => Buffer.from(text, 'base64').toString('utf8'),
+                name: 'chromiumdash.appspot.com',
+                url: 'https://chromiumdash.appspot.com/fetch_releases?channel=Stable&platform=Android&num=10',
+                extract: (data) => data.map((release) => release.version),
               },
               {
-                name: 'github.com/chromium/chromium',
-                url: 'https://raw.githubusercontent.com/chromium/chromium/main/chrome/VERSION',
-                decode: (text) => text,
+                name: 'versionhistory.googleapis.com',
+                url: 'https://versionhistory.googleapis.com/v1/chrome/platforms/android/channels/stable/versions?pageSize=10',
+                extract: (data) => data.versions.map((release) => release.version),
               },
             ];
 
-            let versionText = '';
+            let chromiumVersion = '';
             const versionErrors = [];
             for (const source of versionSources) {
               try {
-                core.info(`Fetching Chromium version from ${source.name}`);
+                core.info(`Fetching latest stable Android version from ${source.name}`);
                 const versionResponse = await fetch(source.url);
                 if (!versionResponse.ok) {
                   throw new Error(`${versionResponse.status} ${versionResponse.statusText}`);
                 }
-                versionText = source.decode(await versionResponse.text());
+                const versions = source
+                  .extract(await versionResponse.json())
+                  .filter((version) => /^\d+\.\d+\.\d+\.\d+$/.test(version));
+                if (versions.length === 0) {
+                  throw new Error('No versions found in response');
+                }
+                chromiumVersion = versions.sort(compareVersions).at(-1);
                 break;
               } catch (error) {
                 versionErrors.push(`${source.name}: ${error.message}`);
-                core.warning(`Failed to fetch Chromium version from ${source.name}: ${error.message}`);
+                core.warning(`Failed to fetch latest stable Android version from ${source.name}: ${error.message}`);
               }
             }
 
-            if (!versionText) {
-              throw new Error(`Failed to fetch Chromium version from all sources: ${versionErrors.join('; ')}`);
+            if (!chromiumVersion) {
+              throw new Error(`Failed to fetch latest stable Android version from all sources: ${versionErrors.join('; ')}`);
             }
-            const fields = Object.fromEntries(
-              versionText
-                .trim()
-                .split('\n')
-                .map((line) => line.split('='))
-            );
-            const chromiumVersion = `${fields.MAJOR}.${fields.MINOR}.${fields.BUILD}.${fields.PATCH}`;
-            const chromiumMajor = fields.MAJOR;
 
             let latestReleaseTag = '';
             let latestReleaseVersion = '';
-            let latestReleaseMajor = '';
             try {
               const release = await github.rest.repos.getLatestRelease({
                 owner: context.repo.owner,
@@ -88,30 +96,26 @@ jobs:
               });
               latestReleaseTag = release.data.tag_name || '';
               latestReleaseVersion = latestReleaseTag.replace(/^v/, '');
-              const match = latestReleaseVersion.match(/^(\d+)\./);
-              latestReleaseMajor = match ? match[1] : '';
             } catch (error) {
               if (error.status !== 404) throw error;
             }
 
-            const shouldBuild = !latestReleaseMajor || chromiumMajor !== latestReleaseMajor;
+            const shouldBuild = chromiumVersion !== latestReleaseVersion;
 
-            core.info(`Chromium main version: ${chromiumVersion}`);
+            core.info(`Latest stable Android version: ${chromiumVersion}`);
             core.info(`Latest release tag: ${latestReleaseTag || '(none)'}`);
             core.info(`Build required: ${shouldBuild}`);
 
             core.setOutput('chromium_version', chromiumVersion);
-            core.setOutput('chromium_major', chromiumMajor);
             core.setOutput('latest_release_tag', latestReleaseTag);
             core.setOutput('latest_release_version', latestReleaseVersion);
-            core.setOutput('latest_release_major', latestReleaseMajor);
             core.setOutput('should_build', String(shouldBuild));
 
-      - name: Skip unchanged Chromium major
+      - name: Skip unchanged Chromium version
         if: steps.version_check.outputs.should_build != 'true' && inputs.force != true
         run: |
-          printf 'Latest Chromium major is %s; latest release is %s. Skipping build.\n' \
-            '${{ steps.version_check.outputs.chromium_major }}' \
+          printf 'Latest stable Android version is %s; latest release is %s. Skipping build.\n' \
+            '${{ steps.version_check.outputs.chromium_version }}' \
             '${{ steps.version_check.outputs.latest_release_tag }}'
 
       - name: Build Chromium Android Desktop APK
@@ -135,7 +139,7 @@ jobs:
           WORKSPACE="$chromium_workspace" \
           LOCAL_APK="$local_apk" \
           ENABLE_HEVC="$enable_hevc" \
-          SYNC_CHROMIUM=1 \
+          CHROMIUM_VERSION="$chromium_version" \
           bash "$GITHUB_WORKSPACE/build.sh"
 
           version_file="$chromium_workspace/chromium/src/chrome/VERSION"

@@ -15,13 +15,15 @@ Environment overrides:
   BUILD_DIR                Chromium output dir (default: out/android-desktop-codecs-release)
   LOCAL_APK                Local APK path (default: ./ChromePublic_arm64.apk)
   ENABLE_HEVC              1 to enable platform HEVC/H.265, 0 to disable (default: 1)
-  SYNC_CHROMIUM            1 to run gclient sync on an existing checkout (default: 0)
+  CHROMIUM_VERSION         Chromium release tag to sync to, e.g. 156.0.8078.25 (default: unset)
+  SYNC_CHROMIUM            1 to run gclient sync to main on an existing checkout (default: 0)
   FORCE_INSTALL_BUILD_DEPS 1 to rerun install-build-deps.sh (default: 0)
 
 Examples:
   ./build.sh
   WORKSPACE=/home/trev/Dev/chromium-android ./build.sh
   ENABLE_HEVC=0 LOCAL_APK=./ChromePublic-no-hevc.apk ./build.sh
+  CHROMIUM_VERSION=156.0.8078.25 ./build.sh
 EOF
 }
 
@@ -37,6 +39,7 @@ UBUNTU_IMAGE=${UBUNTU_IMAGE:-ubuntu:24.04}
 BUILD_DIR=${BUILD_DIR:-out/android-desktop-codecs-release}
 LOCAL_APK=${LOCAL_APK:-"$PWD/ChromePublic_arm64.apk"}
 ENABLE_HEVC=${ENABLE_HEVC:-1}
+CHROMIUM_VERSION=${CHROMIUM_VERSION:-}
 SYNC_CHROMIUM=${SYNC_CHROMIUM:-0}
 FORCE_INSTALL_BUILD_DEPS=${FORCE_INSTALL_BUILD_DEPS:-0}
 
@@ -85,6 +88,11 @@ BUILD_LOG="/workspace/build-android-desktop-codecs-release.log"
 
 if [[ "$ENABLE_HEVC" != "0" && "$ENABLE_HEVC" != "1" ]]; then
   printf 'ENABLE_HEVC must be 0 or 1, got: %s\n' "$ENABLE_HEVC" >&2
+  exit 2
+fi
+
+if [[ -n "$CHROMIUM_VERSION" && ! "$CHROMIUM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  printf 'CHROMIUM_VERSION must look like 156.0.8078.25, got: %s\n' "$CHROMIUM_VERSION" >&2
   exit 2
 fi
 
@@ -157,11 +165,19 @@ step "Fetching Chromium Android source if needed"
 container_ubuntu /workspace 'mkdir -p /workspace/chromium'
 if ! container_ubuntu /workspace 'test -d /workspace/chromium/src/.git'; then
   container_ubuntu /workspace/chromium 'fetch --nohooks --no-history android'
-elif [[ "$SYNC_CHROMIUM" == "1" ]]; then
+elif [[ -z "$CHROMIUM_VERSION" && "$SYNC_CHROMIUM" == "1" ]]; then
   step "Syncing existing Chromium checkout"
   container_ubuntu /workspace/chromium 'gclient sync --nohooks --no-history'
-else
-  printf 'Existing Chromium checkout found; set SYNC_CHROMIUM=1 to update it.\n'
+elif [[ -z "$CHROMIUM_VERSION" ]]; then
+  printf 'Existing Chromium checkout found; set SYNC_CHROMIUM=1 or CHROMIUM_VERSION to update it.\n'
+fi
+
+if [[ -n "$CHROMIUM_VERSION" ]]; then
+  step "Syncing Chromium checkout to $CHROMIUM_VERSION"
+  # Fetch the tag shallowly ourselves; gclient would fetch it without --depth.
+  container_ubuntu /workspace/chromium/src "git fetch --depth=1 --no-tags origin $(quote "refs/tags/$CHROMIUM_VERSION")"
+  chromium_revision=$(container_ubuntu /workspace/chromium/src 'git rev-parse "FETCH_HEAD^{commit}"')
+  container_ubuntu /workspace/chromium "gclient sync --nohooks --no-history -D --revision $(quote "src@$chromium_revision")"
 fi
 
 step "Installing Chromium build dependencies if needed"
