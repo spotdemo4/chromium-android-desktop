@@ -17,6 +17,8 @@ Environment overrides:
   ENABLE_HEVC              1 to enable platform HEVC/H.265, 0 to disable (default: 1)
   CHROMIUM_VERSION         Chromium release tag to sync to, e.g. 156.0.8078.25 (default: unset)
   SYNC_CHROMIUM            1 to run gclient sync to main on an existing checkout (default: 0)
+  GCLIENT_JOBS             Parallel gclient fetches; keep low to avoid googlesource 429s (default: 4)
+  GCLIENT_SYNC_ATTEMPTS    Times to retry a rate-limited gclient sync (default: 5)
   FORCE_INSTALL_BUILD_DEPS 1 to rerun install-build-deps.sh (default: 0)
 
 Examples:
@@ -41,6 +43,8 @@ LOCAL_APK=${LOCAL_APK:-"$PWD/ChromePublic_arm64.apk"}
 ENABLE_HEVC=${ENABLE_HEVC:-1}
 CHROMIUM_VERSION=${CHROMIUM_VERSION:-}
 SYNC_CHROMIUM=${SYNC_CHROMIUM:-0}
+GCLIENT_JOBS=${GCLIENT_JOBS:-4}
+GCLIENT_SYNC_ATTEMPTS=${GCLIENT_SYNC_ATTEMPTS:-5}
 FORCE_INSTALL_BUILD_DEPS=${FORCE_INSTALL_BUILD_DEPS:-0}
 
 quote() {
@@ -68,6 +72,24 @@ container_ubuntu() {
     -w "$workdir" \
     "$CONTAINER_NAME" \
     bash -lc "$cmd"
+}
+
+# gclient sync resumes where it left off, so retry with backoff when
+# googlesource rate-limits anonymous fetches (HTTP 429 RESOURCE_EXHAUSTED).
+gclient_sync() {
+  local args=$1
+  local attempt delay
+  for ((attempt = 1; ; attempt++)); do
+    if container_ubuntu /workspace/chromium "gclient sync --nohooks --no-history --jobs $(quote "$GCLIENT_JOBS") $args"; then
+      return 0
+    fi
+    if ((attempt >= GCLIENT_SYNC_ATTEMPTS)); then
+      return 1
+    fi
+    delay=$((attempt * 300))
+    printf 'gclient sync failed (attempt %d/%d); retrying in %ds.\n' "$attempt" "$GCLIENT_SYNC_ATTEMPTS" "$delay"
+    sleep "$delay"
+  done
 }
 
 create_container() {
@@ -164,10 +186,31 @@ container_ubuntu /workspace '
 step "Fetching Chromium Android source if needed"
 container_ubuntu /workspace 'mkdir -p /workspace/chromium'
 if ! container_ubuntu /workspace 'test -d /workspace/chromium/src/.git'; then
-  container_ubuntu /workspace/chromium 'fetch --nohooks --no-history android'
+  # Equivalent to `fetch --nohooks --no-history android`, but without the
+  # initial sync to main so a pinned CHROMIUM_VERSION only syncs deps once.
+  container_ubuntu /workspace/chromium '
+    gclient config --spec "solutions = [
+  {
+    \"name\": \"src\",
+    \"url\": \"https://chromium.googlesource.com/chromium/src.git\",
+    \"custom_deps\": {},
+    \"custom_vars\": {},
+  },
+]
+target_os = [\"android\"]
+"
+    mkdir -p src
+    git init -q src
+    git -C src remote add origin https://chromium.googlesource.com/chromium/src.git
+    git -C src config diff.ignoreSubmodules dirty
+  '
+  if [[ -z "$CHROMIUM_VERSION" ]]; then
+    container_ubuntu /workspace/chromium/src 'git fetch --depth=1 --no-tags origin refs/heads/main && git checkout -q FETCH_HEAD'
+    gclient_sync ''
+  fi
 elif [[ -z "$CHROMIUM_VERSION" && "$SYNC_CHROMIUM" == "1" ]]; then
   step "Syncing existing Chromium checkout"
-  container_ubuntu /workspace/chromium 'gclient sync --nohooks --no-history'
+  gclient_sync ''
 elif [[ -z "$CHROMIUM_VERSION" ]]; then
   printf 'Existing Chromium checkout found; set SYNC_CHROMIUM=1 or CHROMIUM_VERSION to update it.\n'
 fi
@@ -177,7 +220,9 @@ if [[ -n "$CHROMIUM_VERSION" ]]; then
   # Fetch the tag shallowly ourselves; gclient would fetch it without --depth.
   container_ubuntu /workspace/chromium/src "git fetch --depth=1 --no-tags origin $(quote "refs/tags/$CHROMIUM_VERSION")"
   chromium_revision=$(container_ubuntu /workspace/chromium/src 'git rev-parse "FETCH_HEAD^{commit}"')
-  container_ubuntu /workspace/chromium "gclient sync --nohooks --no-history -D --revision $(quote "src@$chromium_revision")"
+  # A fresh `git init` checkout has no HEAD yet, which gclient sync can't handle.
+  container_ubuntu /workspace/chromium/src 'git rev-parse -q --verify HEAD >/dev/null || git checkout -q FETCH_HEAD'
+  gclient_sync "-D --revision $(quote "src@$chromium_revision")"
 fi
 
 step "Installing Chromium build dependencies if needed"
