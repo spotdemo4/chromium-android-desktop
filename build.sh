@@ -20,6 +20,8 @@ Environment overrides:
   GCLIENT_JOBS             Parallel gclient fetches; keep low to avoid googlesource 429s (default: 4)
   GCLIENT_SYNC_ATTEMPTS    Times to retry a rate-limited gclient sync (default: 5)
   FORCE_INSTALL_BUILD_DEPS 1 to rerun install-build-deps.sh (default: 0)
+  CHROMIUM_GITCOOKIES      googlesource .gitcookies lines (comma- or tab-separated) to
+                           authenticate fetches instead of using the anonymous quota
 
 Examples:
   ./build.sh
@@ -162,6 +164,15 @@ container_root /workspace '
 
 step "Ensuring mounted workspace is writable in container"
 container_root /workspace 'chmod a+rwx /workspace'
+
+if [[ -n "${CHROMIUM_GITCOOKIES:-}" ]]; then
+  step "Configuring googlesource credentials"
+  # Pipe over stdin so the cookie never appears in a command line. The
+  # new-password page hands out comma-separated lines; git wants tabs.
+  printf '%s\n' "$CHROMIUM_GITCOOKIES" | tr , '\t' |
+    docker exec -i -u ubuntu "$CONTAINER_NAME" bash -c 'umask 077 && cat >/home/ubuntu/.gitcookies'
+  container_ubuntu /workspace 'git config --global http.cookiefile /home/ubuntu/.gitcookies'
+fi
 
 step "Cloning depot_tools if needed"
 container_ubuntu /workspace '

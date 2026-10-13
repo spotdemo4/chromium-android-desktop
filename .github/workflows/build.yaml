@@ -122,6 +122,8 @@ jobs:
         if: steps.version_check.outputs.should_build == 'true' || inputs.force == true
         id: build
         shell: bash
+        env:
+          CHROMIUM_GITCOOKIES: ${{ secrets.CHROMIUM_GITCOOKIES }}
         run: |
           set -Eeuo pipefail
 
